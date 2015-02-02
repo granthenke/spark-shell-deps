@@ -1,0 +1,86 @@
+// Add plugin for remote deploy
+plugins {
+  id 'org.hidetake.ssh' version '1.0.1'
+  id 'com.github.ben-manes.versions' version '0.7'
+}
+
+// Add language plugins
+apply plugin: "java"
+apply plugin: "scala"
+
+// Add Provided Dependency Support
+configurations { providedCompile }
+sourceSets.main.compileClasspath += configurations.providedCompile
+sourceSets.test.compileClasspath += configurations.providedCompile
+sourceSets.test.runtimeClasspath += configurations.providedCompile
+
+// Import config variables
+apply from: "$rootDir/config.gradle"
+
+// Add maven repositories
+repositories {
+    maven { url "https://repository.cloudera.com/artifactory/cloudera-repos/" }
+    mavenCentral()
+    mavenLocal()
+}
+
+// Add dependencies
+dependencies {
+    // Add Spark dependency from config.gradle
+    providedCompile sparkDependency
+
+    // Add dependencies from config.gradle
+    compile(customDependencies)
+}
+
+// Task to create artifact with all runtime dependencies (overlays default jar)
+task allDepsJar(type: Jar, dependsOn: jar) {
+    from {
+        configurations.runtime.collect {
+            it.isDirectory() ? it : zipTree(it)
+        }
+    }
+    exclude 'META-INF/*.RSA','META-INF/*.SF','META-INF/*.DSA','META-INF/*.txt'
+    extension "jar"
+}
+
+// Add artifact to the build
+configurations.create("allDeps")
+configurations.archives { extendsFrom configurations.allDeps }
+artifacts {
+    allDeps(allDepsJar) {
+        type "jar"
+    }
+}
+
+// Task to deploy artifact jars locally
+task deployLocal(type: Copy, dependsOn: allDepsJar, group: "Deploy") {
+    from "${buildDir}/libs/${project.name}-${project.version}.jar"
+    into "${localDeployPath}"
+}
+
+// Set up the Remote connection for SSH
+remotes {
+  server {
+    host = "${remoteDeployHost}"
+    user = "${remoteDeployUser}"
+  }
+}
+
+// Task to deploy artifact jars to a remote server
+task deployRemote(dependsOn: allDepsJar, group: "Deploy") << {
+  def passInput = System.console().readPassword("\nPlease enter the password for ${remoteDeployUser}@${remoteDeployHost}:\n")
+  remotes.server.password = "${passInput}"
+
+  println 'Deploying...'
+
+  ssh.run {
+    session(remotes.server) {
+      execute("mkdir -p ${remoteDeployPath}")
+      put "${buildDir}/libs/${project.name}-${project.version}.jar", "${remoteDeployPath}/"
+    }
+  }
+}
+
+// Configure wrapper
+task wrapper(type: Wrapper) { gradleVersion = "2.2" }
