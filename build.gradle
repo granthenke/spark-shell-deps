@@ -1,7 +1,10 @@
-// Add plugin for remote deploy
 plugins {
-  id 'org.hidetake.ssh' version '1.0.1'
-  id 'com.github.ben-manes.versions' version '0.7'
+  // Add plugin for remote deploy
+  id 'org.hidetake.ssh' version '1.1.3'
+  // Add plugin for version updates
+  id 'com.github.ben-manes.versions' version '0.11.3'
+  // Add plugin for fatjar creation
+  id 'com.github.johnrengelman.shadow' version '1.2.2'
 }
 
 // Add language plugins
@@ -27,31 +30,30 @@ repositories {
 // Add dependencies
 dependencies {
     // Add Spark dependency from config.gradle
-    providedCompile sparkDependency
+    providedCompile(sparkDependency)
 
     // Add dependencies from config.gradle
+    compile(additionalSparkDependencies)
     compile(customDependencies)
 }
 
-// Task to create artifact with all runtime dependencies (overlays default jar)
-task allDepsJar(type: Jar, dependsOn: jar) {
-    from {
-        configurations.runtime.collect {
-            it.isDirectory() ? it : zipTree(it)
-        }
-    }
-    exclude 'META-INF/*.RSA','META-INF/*.SF','META-INF/*.DSA','META-INF/*.txt'
-    extension "jar"
+// Only consider release artifacts for dependency updates
+dependencyUpdates {
+  revision = "release"
 }
 
-// Add artifact to the build
-configurations.create("allDeps")
-configurations.archives { extendsFrom configurations.allDeps }
-artifacts {
-    allDeps(allDepsJar) {
-        type "jar"
-    }
+// Configure shadow jar output
+shadowJar {
+  // overlays default jar
+  baseName = 'spark-shell-deps'
+  classifier = ''
+  // Set zip64 to true to support jars with > 65535 file or larger than 4GB
+  zip64 = true
 }
+
+// Task to create artifact with all runtime dependencies. 
+// This is a just an alias for shadowJar.
+task allDepsJar(dependsOn: shadowJar)
 
 // Task to deploy artifact jars locally
 task deployLocal(type: Copy, dependsOn: allDepsJar, group: "Deploy") {
@@ -83,4 +85,4 @@ task deployRemote(dependsOn: allDepsJar, group: "Deploy") << {
 }
 
 // Configure wrapper
-task wrapper(type: Wrapper) { gradleVersion = "2.2" }
+task wrapper(type: Wrapper) { gradleVersion = "2.5" }

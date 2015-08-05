@@ -27,7 +27,7 @@ Using the Jar
 -----------
 When executing ```spark-shell``` add the ```--jars``` argument with the path to the generated jar.
 
-Ex: ```spark-shell --jars spark-shell-deps/spark-shell-deps-*.jar```
+Ex: ```spark-shell --jars ~/spark-shell-deps/spark-shell-deps-*.jar```
 
 
 Deploy Locally
